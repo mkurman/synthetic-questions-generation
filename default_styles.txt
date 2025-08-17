@@ -1,0 +1,53 @@
+# Default Question Styles
+# These are the built-in styles used when no custom style is specified
+
+# Academic and Professional
+formal and academic
+professional and business-focused
+scholarly and research-oriented
+technical and precise
+
+# Creative and Artistic
+creative and imaginative
+artistic and expressive
+storytelling and narrative
+humorous and entertaining
+funny and witty
+playful and lighthearted
+
+# Conversational and Informal
+casual and conversational
+friendly and approachable
+informal and relaxed
+chatty and personal
+colloquial and everyday
+
+# Analytical and Critical
+analytical and critical thinking
+investigative and probing
+methodical and systematic
+logical and reasoning-based
+
+# Practical and Applied
+practical and application-focused
+hands-on and actionable
+problem-solving oriented
+real-world and applicable
+
+# Philosophical and Thoughtful
+thought-provoking and philosophical
+reflective and contemplative
+deep and meaningful
+introspective and personal
+
+# Simple and Direct
+simple and straightforward
+clear and concise
+direct and to-the-point
+brief and focused
+
+# Detailed and Comprehensive
+detailed and comprehensive
+thorough and exhaustive
+elaborate and extensive
+in-depth and complete
