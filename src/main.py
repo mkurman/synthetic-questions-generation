@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import asyncio
 import aiohttp
-from datasets import load_dataset
+from datasets import load_dataset, load_from_disk
 from tqdm import tqdm
 import logging
 
@@ -47,6 +47,9 @@ def is_local_file(dataset_name: str) -> bool:
     """Check if the dataset name is a local file path"""
     return (dataset_name.endswith('.jsonl') or dataset_name.endswith('.json')) and os.path.exists(dataset_name)
 
+def is_local_parquet(dataset_name: str) -> bool:
+    """Check if the dataset name is a local parquet file path"""
+    return dataset_name.endswith('.parquet') and os.path.exists(dataset_name)
 
 class APIProvider:
     """API provider for question generation"""
@@ -446,6 +449,8 @@ async def main():
     if args.verbose:
         if is_local_file(args.dataset):
             print(f"📂 Loading local JSONL file: {args.dataset}")
+        elif is_local_parquet(args.dataset):
+            print(f"📂 Loading local Parquet file: {args.dataset}")
         else:
             print(f"📂 Loading HuggingFace dataset: {args.dataset}")
     
@@ -455,6 +460,12 @@ async def main():
             dataset_list = load_jsonl_file(args.dataset)
             if args.verbose:
                 print(f"✅ Loaded {len(dataset_list)} items from local JSONL file")
+        elif is_local_parquet(args.dataset):
+            # Load local Parquet file
+            dataset = load_from_disk("parquet", args.dataset)
+            dataset_list = list(dataset)
+            if args.verbose:
+                print(f"✅ Loaded {len(dataset_list)} items from local Parquet file")
         else:
             # Load HuggingFace dataset
             dataset = load_dataset(args.dataset, split=args.dataset_split)
@@ -464,6 +475,8 @@ async def main():
     except Exception as e:
         if is_local_file(args.dataset):
             logger.error(f"Failed to load JSONL file {args.dataset}: {e}")
+        elif is_local_parquet(args.dataset):
+            logger.error(f"Failed to load Parquet file {args.dataset}: {e}")
         else:
             logger.error(f"Failed to load HuggingFace dataset {args.dataset}: {e}")
         return
@@ -532,6 +545,8 @@ async def main():
     if is_local_file(args.dataset):
         # Use the base filename for local files
         dataset_name = Path(args.dataset).stem
+    elif is_local_parquet(args.dataset):
+        dataset_name = Path(args.dataset).stem
     else:
         # Use the dataset name for HuggingFace datasets
         dataset_name = args.dataset.replace('/', '_')
@@ -553,6 +568,8 @@ async def main():
             print(f"📍 Range: items {args.start_index} to {end_display} from original dataset")
         if is_local_file(args.dataset):
             print(f"📁 Source: Local JSONL file ({Path(args.dataset).name})")
+        elif is_local_parquet(args.dataset):
+            print(f"📂 Source: Local Parquet file ({Path(args.dataset).name})")
         else:
             print(f"🤗 Source: HuggingFace dataset ({args.dataset})")
         print(f"🤖 Model: {args.provider}/{args.model}")

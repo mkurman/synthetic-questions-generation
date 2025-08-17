@@ -1,6 +1,6 @@
 # Synthetic Questions Generation
 
-Generate diverse, engaging questions from text using multiple LLM providers (OpenAI-compatible, Anthropic, Gemini, OpenRouter, Groq, Together, Cerebras, Qwen/DeepInfra, Kimi, Z.ai, Ollama, Chutes).
+Generate diverse, engaging questions from text using multiple LLM providers (OpenAI-compatible, Anthropic, Gemini, OpenRouter, Groq, Together, Cerebras, Qwen/DeepInfra, Kimi, Z.ai, Ollama, Chutes, Hugging Face).
 
 To diversify outputs, the generator randomly selects a writing style for each item (e.g., formal and academic; casual and conversational; funny and humorous; thought‑provoking and philosophical; practical and application‑focused; analytical and critical; creative and imaginative; simple and straightforward; detailed and comprehensive; or concise and direct).
 
@@ -106,6 +106,7 @@ You can pass either:
 
 - Hugging Face dataset name: `org/dataset` (uses `datasets.load_dataset(..., split=...)`)
 - Local JSONL/JSON file: path ending with `.jsonl` or `.json`
+- Local Parquet file: path ending with `.parquet`
 
 Default text column is `text`. Change with `--text-column` if your data uses another key.
 
@@ -114,6 +115,17 @@ Local JSONL example (one JSON per line):
 ```json
 {"text": "Large Language Models excel at generating diverse questions from text."}
 {"text": "Neural networks can learn complex patterns from large datasets."}
+```
+
+Local Parquet example:
+
+```bash
+python3 src/main.py /path/to/data.parquet \
+	--provider openrouter \
+	--model qwen/qwen3-235b-a22b-2507 \
+	--output-dir ./data/questions_parquet \
+	--text-column text \
+	--num-questions 3
 ```
 
 ## Output
