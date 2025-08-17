@@ -67,6 +67,9 @@ Key options:
 - --dataset-split SPLIT       HF split for remote datasets (default: train)
 - --sleep-between-requests S  Rate-limit between API calls
 - --sleep-between-items S     Rate-limit between items
+- --style STYLE               Optional. Single style or comma-separated list; one is chosen randomly per item
+- --no-style                  Generate questions without any style instructions (neutral tone)
+- --styles-file FILE          Load styles from a file (one per line, # for comments)
 - --verbose                   Verbose logging
 - --debug                     Debug logging
 
@@ -74,7 +77,65 @@ Supported providers for `--provider`:
 
 featherless, openai, anthropic, qwen, qwen-deepinfra, kimi, z.ai, openrouter, cerebras, together, groq, gemini, ollama, chutes
 
-## Authentication (API keys)
+### Styles
+
+You can control question styles in several ways:
+
+1. **Default behavior** (no style flags): Randomly selects from 35+ built-in styles per item (see `default_styles.txt`)
+2. **Custom styles** (`--style`): Single style or comma-separated list; one chosen randomly per item  
+3. **No styling** (`--no-style`): Generates neutral, straightforward questions without style instructions
+4. **Styles from file** (`--styles-file`): Load styles from a text file (one per line, `#` for comments)
+
+**Note**: Only one style option can be used at a time.
+
+Built-in default styles include academic, creative, informal, analytical, practical, philosophical, and more. The complete list is in `default_styles.txt` and includes styles like:
+
+- formal and academic, professional and business-focused
+- creative and imaginative, artistic and expressive, humorous and entertaining
+- casual and conversational, friendly and approachable, informal and relaxed
+- analytical and critical thinking, investigative and probing
+- practical and application-focused, hands-on and actionable
+- thought-provoking and philosophical, reflective and contemplative
+- simple and straightforward, clear and concise
+- detailed and comprehensive, thorough and exhaustive
+
+Examples:
+
+```bash
+# Single custom style
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/out \
+  --num-questions 5 \
+  --style "formal and academic"
+
+# Multiple custom styles (random per item)
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/out \
+  --num-questions 5 \
+  --style "casual and conversational,funny and humorous,concise and direct"
+
+# No styling (neutral questions)
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/out \
+  --num-questions 5 \
+  --no-style
+
+# Load styles from file
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/out \
+  --num-questions 5 \
+  --styles-file ./styles_sample.txt
+```
+
+See `styles_sample.txt` for an example styles file format and `default_styles.txt` for the complete list of built-in styles.## Authentication (API keys)
 
 Provide API keys via environment variables. General rule: `<PROVIDER>_API_KEY` using uppercase and replacing `.` or `-` with `_`. Special cases are handled automatically.
 

@@ -23,6 +23,35 @@ logging.basicConfig(level=logging.WARNING, format='%(asctime)s - %(levelname)s -
 logger = logging.getLogger(__name__)
 
 
+def load_default_styles() -> List[str]:
+    """Load default question styles from file"""
+    default_styles_file = Path(__file__).parent.parent / "default_styles.txt"
+    
+    try:
+        with open(default_styles_file, 'r', encoding='utf-8') as f:
+            styles = [line.strip() for line in f if line.strip() and not line.strip().startswith('#')]
+        return styles
+    except Exception as e:
+        logger.warning(f"Could not load default styles file: {e}. Using fallback styles.")
+        # Fallback styles if file can't be loaded
+        return [
+            "formal and academic",
+            "casual and conversational",
+            "funny and humorous",
+            "thought-provoking and philosophical",
+            "practical and application-focused",
+            "analytical and critical thinking",
+            "creative and imaginative",
+            "simple and straightforward",
+            "detailed and comprehensive",
+            "concise and direct",
+        ]
+
+
+# Load default question styles
+QUESTION_STYLES: List[str] = load_default_styles()
+
+
 def load_jsonl_file(file_path: str) -> List[Dict[str, Any]]:
     """Load data from a JSONL file"""
     data = []
@@ -131,10 +160,10 @@ class APIProvider:
                 "Authorization": f"Bearer {api_key}"
             }
     
-    async def generate_questions(self, text: str, num_questions: int, session: aiohttp.ClientSession) -> tuple[str, str]:
+    async def generate_questions(self, text: str, num_questions: int, session: aiohttp.ClientSession, selected_style: Optional[str] = None) -> tuple[str, str]:
         """Generate questions based on the provided text and return response with selected style"""
         try:
-            messages, selected_style = self._prepare_messages(text, num_questions)
+            messages, selected_style = self._prepare_messages(text, num_questions, selected_style)
             
             if self.provider_name.lower() == "gemini":
                 response = await self._generate_gemini_response(messages, session)
@@ -149,40 +178,35 @@ class APIProvider:
             logger.error(f"Error generating questions with {self.provider_name}: {e}")
             raise
     
-    def _prepare_messages(self, text: str, num_questions: int) -> tuple[List[Dict[str, str]], str]:
-        """Prepare messages for question generation and return the selected style"""
-        # Random question styles for variety
-        styles = [
-            "formal and academic",
-            "casual and conversational", 
-            "funny and humorous",
-            "thought-provoking and philosophical",
-            "practical and application-focused",
-            "analytical and critical thinking",
-            "creative and imaginative",
-            "simple and straightforward",
-            "detailed and comprehensive",
-            "concise and direct"
-        ]
-        
-        selected_style = random.choice(styles)
+    def _prepare_messages(self, text: str, num_questions: int, selected_style: Optional[str]) -> tuple[List[Dict[str, str]], str]:
+        """Prepare messages for question generation and return the selected style.
+
+        If selected_style is None, a style is chosen randomly from QUESTION_STYLES.
+        If selected_style is an empty string, no style is used (completely neutral).
+        """
+        # Choose style (respect override if provided)
+        if selected_style is None:
+            selected_style = random.choice(QUESTION_STYLES)
+        elif selected_style == "":
+            # No style requested - keep it as empty string for neutral handling
+            pass
         
         system_prompt = f"""You are an expert question generator. Your task is to create {num_questions} diverse and engaging questions based on the provided text.
 
 Guidelines:
 - Generate exactly {num_questions} questions
-- Use a {selected_style} style
+{f"- Use a {selected_style} style" if selected_style else "- Generate questions in a straightforward manner"}
 - Questions should be relevant to the content, but don't directly include any phrases like "in this text", "in this article", "regarding to the text", etc. Use references instead if possible, and when not, be more general. We want answers to the questions to be discoverable through web search
 - Vary question types (what, how, why, when, where, is, are, etc.)
-- Try to use greetings where applicable - like human would do when the style is informal
+{f"- Try to use greetings where applicable - like human would do when the style is informal" if selected_style and "casual" in selected_style.lower() else ""}
 - Make questions engaging and thought-provoking
 - Each question should be on a separate line
 - Number each question (1., 2., 3., etc.)
 - Questions should be self-contained and understandable without the original text
 
-Style: {selected_style}"""
+{f"Style: {selected_style}" if selected_style else ""}"""
         
-        user_prompt = f"""Based on the following text, generate {num_questions} questions in a {selected_style} style:
+        user_prompt = f"""Based on the following text, generate {num_questions} questions{f" in a {selected_style} style" if selected_style else ""}:
 
 Text:
 {text}
@@ -192,7 +216,7 @@ Please generate exactly {num_questions} numbered questions:"""
         return [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
-        ], selected_style
+        ], selected_style or "no-style"
     
     async def _generate_openai_compatible_response(self, messages: List[Dict[str, str]], session: aiohttp.ClientSession) -> str:
         """Generate response using OpenAI-compatible API"""
@@ -273,11 +297,12 @@ Please generate exactly {num_questions} numbered questions:"""
 class QuestionGenerator:
     """Manages question generation process"""
     
-    def __init__(self, provider: APIProvider, num_questions: int = 3, verbose: bool = False, sleep_between_requests: float = 0.0):
+    def __init__(self, provider: APIProvider, num_questions: int = 3, verbose: bool = False, sleep_between_requests: float = 0.0, styles: Optional[List[str]] = None):
         self.provider = provider
         self.num_questions = num_questions
         self.verbose = verbose
         self.sleep_between_requests = sleep_between_requests
+        self.styles = styles
     
     async def generate_questions_for_text(self, text: str, metadata: Optional[Dict[str, Any]], session: aiohttp.ClientSession) -> Dict[str, Any]:
         """Generate questions for a single text and return structured result"""
@@ -286,8 +311,18 @@ class QuestionGenerator:
                 print(f"\n🤖 Generating {self.num_questions} questions using {self.provider.model_name}...")
                 print(f"📝 Text preview: {text[:100]}...")
             
+            # Choose style for this item (random if multiple provided)
+            chosen_style = None
+            if self.styles is not None:
+                if len(self.styles) > 0:
+                    chosen_style = random.choice(self.styles)
+                else:
+                    # Empty list means --no-style was used
+                    chosen_style = ""
+            # If self.styles is None, use default behavior (random from QUESTION_STYLES)
+
             # Generate questions
-            questions_response, selected_style = await self.provider.generate_questions(text, self.num_questions, session)
+            questions_response, selected_style = await self.provider.generate_questions(text, self.num_questions, session, chosen_style)
             
             if self.verbose:
                 print(f"🎨 Using style: {selected_style}")
@@ -314,6 +349,7 @@ class QuestionGenerator:
                 "generation_settings": {
                     "provider": self.provider.provider_name,
                     "model": self.provider.model_name,
+                    "style": selected_style,
                     "num_questions_requested": self.num_questions,
                     "num_questions_generated": len(questions),
                     "max_tokens": self.provider.max_tokens
@@ -374,7 +410,6 @@ async def process_dataset_item(
     metadata = {
         "original_item_index": item_index,
         "text_column": text_column,
-        "source_dataset_item": item
     }
     
     # Generate questions
@@ -432,6 +467,22 @@ async def main():
                         help="Sleep time in seconds between API requests (rate limiting)")
     parser.add_argument("--sleep-between-items", type=float, default=0.0, 
                         help="Sleep time in seconds between processing dataset items")
+    parser.add_argument(
+        "--style",
+        help=(
+            "Optional style or comma-separated styles to sample randomly. "
+            "If omitted, a style is randomly chosen from defaults."
+        ),
+    )
+    parser.add_argument(
+        "--no-style", 
+        action="store_true",
+        help="Generate questions without any style instructions"
+    )
+    parser.add_argument(
+        "--styles-file",
+        help="Path to a file containing styles (one per line)"
+    )
     
     args = parser.parse_args()
     
@@ -520,7 +571,11 @@ async def main():
     
     # Check if text column exists in dataset
     if dataset_size > 0 and args.text_column not in dataset_list[0]:
-        logger.error(f"Column '{args.text_column}' not found in dataset. Available columns: {list(dataset_list[0].keys())}")
+        sample = dataset_list[0]
+        available_cols = list(sample.keys()) if isinstance(sample, dict) else []
+        logger.error(
+            f"Column '{args.text_column}' not found in dataset. Available columns: {available_cols}"
+        )
         return
     
     # Initialize provider
@@ -533,11 +588,40 @@ async def main():
         return
     
     # Initialize question generator
+    # Prepare styles list (if provided)
+    styles_list: Optional[List[str]] = None
+    
+    # Handle mutually exclusive style options
+    style_options_count = sum([
+        bool(args.style), 
+        bool(args.no_style), 
+        bool(args.styles_file)
+    ])
+    
+    if style_options_count > 1:
+        logger.error("Only one of --style, --no-style, or --styles-file can be specified")
+        return
+    
+    if args.no_style:
+        styles_list = []  # Empty list means no style
+    elif args.styles_file:
+        try:
+            with open(args.styles_file, 'r', encoding='utf-8') as f:
+                styles_list = [line.strip() for line in f if line.strip()]
+            if args.verbose:
+                print(f"📋 Loaded {len(styles_list)} styles from {args.styles_file}")
+        except Exception as e:
+            logger.error(f"Failed to load styles file {args.styles_file}: {e}")
+            return
+    elif args.style:
+        styles_list = [s.strip() for s in str(args.style).split(',') if s.strip()]
+
     question_generator = QuestionGenerator(
-        provider=provider,
-        num_questions=args.num_questions,
-        verbose=args.verbose,
-        sleep_between_requests=args.sleep_between_requests
+    provider=provider,
+    num_questions=args.num_questions,
+    verbose=args.verbose,
+        sleep_between_requests=args.sleep_between_requests,
+        styles=styles_list,
     )
     
     # Create output filename
