@@ -201,10 +201,11 @@ Each line is a JSON record. For successful generations:
 	"source_text": "...original text...",
 	"question_index": 1,
 	"total_questions": 5,
-	"metadata": { "original_item_index": 0, "text_column": "text", "source_dataset_item": { /* original item */ } },
+	"metadata": { "original_item_index": 0, "text_column": "text" },
 	"generation_settings": {
 		"provider": "openrouter",
 		"model": "qwen/qwen3-235b-a22b-2507",
+        "style": "formal and academic",
 		"num_questions_requested": 5,
 		"num_questions_generated": 5,
 		"max_tokens": 4096
@@ -251,5 +252,5 @@ python3 src/main.py ./data/articles.jsonl \
 
 ## License
 
-Apache 2.0. See `LICENSE`.
+Apache 2.0. See [LICENSE](LICENSE).
 
