@@ -90,6 +90,7 @@ Provide API keys via environment variables. General rule: `<PROVIDER>_API_KEY` u
 - z.ai → `Z_AI_API_KEY`
 - featherless → `FEATHERLESS_API_KEY`
 - chutes → `CHUTES_API_KEY`
+- hugging face → `HUGGINGFACE_API_KEY`
 - gemini → `GEMINI_API_KEY` (note: Gemini uses a query param; still export as shown)
 - ollama → no API key required (assumes local Ollama at http://localhost:11434)
 
