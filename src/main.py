@@ -75,6 +75,7 @@ class APIProvider:
             "gemini": "https://generativelanguage.googleapis.com/v1beta",
             "ollama": "http://localhost:11434/v1",
             "chutes": "https://llm.chutes.ai/v1",
+            "huggingface": "https://api-inference.huggingface.co/v1",
         }
         return provider_urls.get(self.provider_name, "https://api.featherless.ai/v1")
     
@@ -409,7 +410,7 @@ async def main():
     parser.add_argument("dataset", help="HuggingFace dataset name or local JSONL file path")
     parser.add_argument("--provider", required=True, 
                         choices=["featherless", "openai", "anthropic", "qwen", "qwen-deepinfra", "kimi", 
-                                "z.ai", "openrouter", "cerebras", "together", "groq", "gemini", "ollama", "chutes"],
+                                "z.ai", "openrouter", "cerebras", "together", "groq", "gemini", "ollama", "chutes", "huggingface"],
                         help="API provider to use")
     parser.add_argument("--model", required=True, help="Model name")
     parser.add_argument("--output-dir", required=True, help="Output directory")
