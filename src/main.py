@@ -195,7 +195,7 @@ class APIProvider:
 Guidelines:
 - Generate exactly {num_questions} questions
 {f"- Use a {selected_style} style" if selected_style else "- Generate questions in a straightforward manner"}
-- Questions should be relevant to the content, but don't directly include any phrases like "in this text", "in this article", "regarding to the text", etc. Use references instead if possible, and when not, be more general. We want answers to the questions to be discoverable through web search
+- Questions should be relevant to the content, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. Use references instead if possible, and when not, be more general. We want answers to the questions to be discoverable through web search
 - Vary question types (what, how, why, when, where, is, are, etc.)
 {f"- Try to use greetings where applicable - like human would do when the style is informal" if selected_style and "casual" in selected_style.lower() else ""}
 - Make questions engaging and thought-provoking
@@ -335,6 +335,7 @@ Please generate exactly {num_questions} numbered questions:"""
 Guidelines:
 - Answer the question directly and thoroughly based on the provided text
 - Use information from the text to support your answer
+- Answer should be relevant to the text, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. We want answers to the questions to be based on the context without explicitly mentioning it
 - If the text doesn't contain enough information to fully answer the question, acknowledge this limitation
 - Be clear, concise, and well-structured in your response
 - Do not make up information that isn't in the provided text
@@ -361,6 +362,7 @@ Please provide a comprehensive answer based on the information in the text:"""
 Guidelines:
 - Answer each question directly and thoroughly based on the provided text
 - Use information from the text to support your answers
+- Answer should be relevant to the text, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. We want answers to the questions to be based on the context without explicitly mentioning it
 - If the text doesn't contain enough information to fully answer a question, acknowledge this limitation
 - Be clear, concise, and well-structured in your responses
 - Do not make up information that isn't in the provided text
