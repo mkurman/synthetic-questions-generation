@@ -70,6 +70,10 @@ Key options:
 - --style STYLE               Optional. Single style or comma-separated list; one is chosen randomly per item
 - --no-style                  Generate questions without any style instructions (neutral tone)
 - --styles-file FILE          Load styles from a file (one per line, # for comments)
+- --with-answer               Generate answers for each question using the model
+- --answer-provider PROVIDER  API provider to use for answering questions (if not set, uses the same provider as --provider)
+- --answer-model MODEL        Model to use for answering questions (if not set, uses the same model as --model)
+- --answer-single-request     Answer all questions in a single request instead of one question per request
 - --verbose                   Verbose logging
 - --debug                     Debug logging
 
@@ -135,7 +139,63 @@ python3 src/main.py <dataset> \
   --styles-file ./styles_sample.txt
 ```
 
-See `styles_sample.txt` for an example styles file format and `default_styles.txt` for the complete list of built-in styles.## Authentication (API keys)
+See `styles_sample.txt` for an example styles file format and `default_styles.txt` for the complete list of built-in styles.
+
+### Answer Generation
+
+The system can optionally generate answers for each question using the `--with-answer` flag. This creates question-answer pairs where each question is answered based on the original source text.
+
+Key features:
+
+- **Answer generation**: Use `--with-answer` to enable answer generation for each question
+- **Custom answer provider**: Use `--answer-provider` to specify a different API provider for answering (defaults to the same provider used for questions)
+- **Custom answer model**: Use `--answer-model` to specify a different model for answering (defaults to the same model used for questions)
+- **Batch vs individual**: Use `--answer-single-request` to generate all answers in one request, or process one question at a time (default)
+- **Error handling**: If answer generation fails, the output field is set to "error" with an appropriate error message
+
+Examples:
+
+```bash
+# Generate questions with answers using the same model
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/qa_output \
+  --num-questions 3 \
+  --with-answer
+
+# Use a different model for answers
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --answer-model qwen/qwen3-4b-instruct \
+  --output-dir ./data/qa_output \
+  --num-questions 3 \
+  --with-answer
+
+# Use a different provider and model for answers
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model openai/gpt-oss-120b \
+  --answer-provider anthropic \
+  --answer-model moonshotai/kimi-k2 \
+  --output-dir ./data/qa_output \
+  --num-questions 3 \
+  --with-answer
+
+# Generate all answers in a single request (more efficient but less granular error handling)
+python3 src/main.py <dataset> \
+  --provider openrouter \
+  --model qwen/qwen3-235b-a22b-2507 \
+  --output-dir ./data/qa_output \
+  --num-questions 3 \
+  --with-answer \
+  --answer-single-request
+```
+
+When `--with-answer` is used, the output format includes an `output` field containing the generated answer, or "error" if answer generation failed.
+
+## Authentication (API keys)
 
 Provide API keys via environment variables. General rule: `<PROVIDER>_API_KEY` using uppercase and replacing `.` or `-` with `_`. Special cases are handled automatically.
 
@@ -193,7 +253,7 @@ python3 src/main.py /path/to/data.parquet \
 
 Writes to `<output-dir>/questions_{YYYY-MM-DD_HH-MM-SS}_{dataset}_{provider}_{model}[optional_range].jsonl`
 
-Each line is a JSON record. For successful generations:
+Each line is a JSON record. For successful question generations:
 
 ```json
 {
@@ -214,6 +274,33 @@ Each line is a JSON record. For successful generations:
 }
 ```
 
+When using `--with-answer`, each record also includes an `output` field with the generated answer:
+
+```json
+{
+	"input": "What practical applications benefit most from question generation using LLMs?",
+	"output": "Question generation using LLMs has several practical applications including educational content creation, chatbot training data, assessment generation for online courses, and synthetic dataset augmentation for machine learning models...",
+	"source_text": "...original text...",
+	"question_index": 1,
+	"total_questions": 5,
+	"metadata": { "original_item_index": 0, "text_column": "text" },
+	"generation_settings": {
+		"provider": "openrouter",
+		"model": "qwen/qwen3-235b-a22b-2507",
+        "style": "formal and academic",
+		"answer_provider": "anthropic",
+		"answer_model": "claude-3-haiku-20240307",
+		"answer_single_request": false,
+		"num_questions_requested": 5,
+		"num_questions_generated": 5,
+		"max_tokens": 4096
+	},
+	"timestamp": "2025-08-17T12:34:56.789012"
+}
+```
+
+If answer generation fails for a question, the `output` field is set to "error" and an `answer_error` field provides details.
+
 If generation fails for an item, an error record is emitted with `error` instead of `questions` fields.
 
 ## Examples
@@ -230,6 +317,40 @@ python3 src/main.py mkurman/hindawi-journals-2007-2023 \
 	--end-index 10 \
 	--num-questions 5 \
 	--text-column text \
+	--verbose
+```
+
+OpenRouter with Answer Generation:
+
+```bash
+export OPENROUTER_API_KEY=your_api_key_here
+python3 src/main.py mkurman/hindawi-journals-2007-2023 \
+	--provider openrouter \
+	--model qwen/qwen3-235b-a22b-2507 \
+	--output-dir ./data/qa_openrouter \
+	--start-index 0 \
+	--end-index 10 \
+	--num-questions 3 \
+	--with-answer \
+	--answer-single-request \
+	--verbose
+```
+
+Multi-Provider Q&A Generation (Questions from OpenRouter, Answers from Anthropic):
+
+```bash
+export OPENROUTER_API_KEY=your_openrouter_key
+export ANTHROPIC_API_KEY=your_anthropic_key
+python3 src/main.py mkurman/hindawi-journals-2007-2023 \
+	--provider openrouter \
+	--model qwen/qwen3-235b-a22b-2507 \
+	--answer-provider anthropic \
+	--answer-model claude-3-haiku-20240307 \
+	--output-dir ./data/qa_multi_provider \
+	--start-index 0 \
+	--end-index 5 \
+	--num-questions 2 \
+	--with-answer \
 	--verbose
 ```
 

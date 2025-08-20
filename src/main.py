@@ -8,7 +8,6 @@ import argparse
 import json
 import os
 import random
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -293,16 +292,111 @@ Please generate exactly {num_questions} numbered questions:"""
             result = await response.json()
             return result["candidates"][0]["content"]["parts"][0]["text"].strip()
 
+    async def generate_answer(self, question: str, source_text: str, session: aiohttp.ClientSession) -> str:
+        """Generate an answer for a given question based on the source text"""
+        try:
+            messages = self._prepare_answer_messages(question, source_text)
+
+            if self.provider_name.lower() == "gemini":
+                response = await self._generate_gemini_response(messages, session)
+            elif self.provider_name.lower() == "anthropic":
+                response = await self._generate_anthropic_response(messages, session)
+            else:
+                response = await self._generate_openai_compatible_response(messages, session)
+
+            return response.strip()
+
+        except Exception as e:
+            logger.error(f"Error generating answer with {self.provider_name}: {e}")
+            raise
+
+    async def generate_answers_batch(self, questions: List[str], source_text: str, session: aiohttp.ClientSession) -> str:
+        """Generate answers for multiple questions in a single request"""
+        try:
+            messages = self._prepare_batch_answer_messages(questions, source_text)
+
+            if self.provider_name.lower() == "gemini":
+                response = await self._generate_gemini_response(messages, session)
+            elif self.provider_name.lower() == "anthropic":
+                response = await self._generate_anthropic_response(messages, session)
+            else:
+                response = await self._generate_openai_compatible_response(messages, session)
+
+            return response.strip()
+
+        except Exception as e:
+            logger.error(f"Error generating batch answers with {self.provider_name}: {e}")
+            raise
+
+    def _prepare_answer_messages(self, question: str, source_text: str) -> List[Dict[str, str]]:
+        """Prepare messages for answering a single question"""
+        system_prompt = """You are an expert assistant that provides accurate, comprehensive answers to questions based on provided text.
+
+Guidelines:
+- Answer the question directly and thoroughly based on the provided text
+- Use information from the text to support your answer
+- If the text doesn't contain enough information to fully answer the question, acknowledge this limitation
+- Be clear, concise, and well-structured in your response
+- Do not make up information that isn't in the provided text
+- If the question cannot be answered from the text, explain why"""
+
+        user_prompt = f"""Based on the following text, please answer this question:
+
+Question: {question}
+
+Text:
+{source_text}
+
+Please provide a comprehensive answer based on the information in the text:"""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
+    def _prepare_batch_answer_messages(self, questions: List[str], source_text: str) -> List[Dict[str, str]]:
+        """Prepare messages for answering multiple questions in a single request"""
+        system_prompt = """You are an expert assistant that provides accurate, comprehensive answers to multiple questions based on provided text.
+
+Guidelines:
+- Answer each question directly and thoroughly based on the provided text
+- Use information from the text to support your answers
+- If the text doesn't contain enough information to fully answer a question, acknowledge this limitation
+- Be clear, concise, and well-structured in your responses
+- Do not make up information that isn't in the provided text
+- Number each answer to correspond with the question number
+- Format each answer on a separate line starting with the number (1., 2., 3., etc.)"""
+
+        questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
+
+        user_prompt = f"""Based on the following text, please answer these questions:
+
+Questions:
+{questions_text}
+
+Text:
+{source_text}
+
+Please provide comprehensive answers based on the information in the text, numbering each answer:"""
+
+        return [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ]
+
 
 class QuestionGenerator:
     """Manages question generation process"""
-    
-    def __init__(self, provider: APIProvider, num_questions: int = 3, verbose: bool = False, sleep_between_requests: float = 0.0, styles: Optional[List[str]] = None):
+
+    def __init__(self, provider: APIProvider, num_questions: int = 3, verbose: bool = False, sleep_between_requests: float = 0.0, styles: Optional[List[str]] = None,
+                 answer_provider: Optional[APIProvider] = None, answer_single_request: bool = False):
         self.provider = provider
         self.num_questions = num_questions
         self.verbose = verbose
         self.sleep_between_requests = sleep_between_requests
         self.styles = styles
+        self.answer_provider = answer_provider
+        self.answer_single_request = answer_single_request
     
     async def generate_questions_for_text(self, text: str, metadata: Optional[Dict[str, Any]], session: aiohttp.ClientSession) -> Dict[str, Any]:
         """Generate questions for a single text and return structured result"""
@@ -335,13 +429,70 @@ class QuestionGenerator:
             
             # Parse questions from response
             questions = self._parse_questions(questions_response)
-            
+
             if self.verbose:
                 print(f"✅ Generated {len(questions)} questions successfully!")
                 for i, q in enumerate(questions, 1):
                     print(f"  {i}. {q}")
-            
-            return {
+
+            # Generate answers if requested
+            answers = []
+            answer_errors = []
+            if self.answer_provider and questions:
+                if self.verbose:
+                    print(f"🤖 Generating answers using {self.answer_provider.model_name}...")
+
+                try:
+                    if self.answer_single_request:
+                        # Generate all answers in a single request
+                        if self.verbose:
+                            print(f"📝 Generating all {len(questions)} answers in single request...")
+
+                        batch_response = await self.answer_provider.generate_answers_batch(questions, text, session)
+                        answers = self._parse_batch_answers(batch_response, len(questions))
+
+                        # Ensure we have the right number of answers
+                        while len(answers) < len(questions):
+                            answers.append("Error: Could not generate answer")
+                            answer_errors.append(f"Missing answer for question {len(answers)}")
+
+                        if self.verbose:
+                            print(f"✅ Generated {len(answers)} answers in batch!")
+                    else:
+                        # Generate answers one by one
+                        for i, question in enumerate(questions):
+                            if self.verbose:
+                                print(f"📝 Generating answer {i+1}/{len(questions)}...")
+
+                            try:
+                                answer = await self.answer_provider.generate_answer(question, text, session)
+                                answers.append(answer)
+
+                                if self.verbose:
+                                    print(f"✅ Answer {i+1}: {answer[:100]}...")
+
+                                # Rate limiting between answer requests
+                                if self.sleep_between_requests > 0 and i < len(questions) - 1:
+                                    if self.verbose:
+                                        print(f"⏱️  Sleeping {self.sleep_between_requests}s for rate limiting...")
+                                    await asyncio.sleep(self.sleep_between_requests)
+
+                            except Exception as e:
+                                error_msg = f"Error generating answer for question {i+1}: {str(e)}"
+                                answers.append("Error: Could not generate answer")
+                                answer_errors.append(error_msg)
+                                if self.verbose:
+                                    print(f"❌ {error_msg}")
+
+                except Exception as e:
+                    error_msg = f"Error in batch answer generation: {str(e)}"
+                    answer_errors.append(error_msg)
+                    # Fill with error messages
+                    answers = ["Error: Could not generate answer"] * len(questions)
+                    if self.verbose:
+                        print(f"❌ {error_msg}")
+
+            result = {
                 "source_text": text,
                 "questions": questions,
                 "raw_response": questions_response,
@@ -356,6 +507,17 @@ class QuestionGenerator:
                 },
                 "timestamp": datetime.now().isoformat()
             }
+
+            # Add answer-related fields if answers were generated
+            if self.answer_provider:
+                result["answers"] = answers
+                result["generation_settings"]["answer_provider"] = self.answer_provider.provider_name
+                result["generation_settings"]["answer_model"] = self.answer_provider.model_name
+                result["generation_settings"]["answer_single_request"] = self.answer_single_request
+                if answer_errors:
+                    result["answer_errors"] = answer_errors
+
+            return result
             
         except Exception as e:
             logger.error(f"Error generating questions: {e}")
@@ -390,6 +552,41 @@ class QuestionGenerator:
         
         return questions
 
+    def _parse_batch_answers(self, response: str, expected_count: int) -> List[str]:
+        """Parse individual answers from a batch response"""
+        lines = response.strip().split('\n')
+        answers = []
+
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Remove numbering (1., 2., etc.) and clean up
+            import re
+            cleaned = re.sub(r'^\d+\.\s*', '', line)  # Remove "1. ", "2. ", etc.
+            cleaned = re.sub(r'^\d+\)\s*', '', cleaned)  # Remove "1) ", "2) ", etc.
+            cleaned = re.sub(r'^[-*]\s*', '', cleaned)  # Remove "- " or "* "
+            cleaned = cleaned.strip()
+
+            if cleaned:  # Add any non-empty cleaned line as an answer
+                answers.append(cleaned)
+
+        # If we didn't get enough answers, try to split by common patterns
+        if len(answers) < expected_count and len(answers) == 1:
+            # Try to split a single long response
+            single_response = answers[0]
+            # Look for numbered patterns within the response
+            import re
+            numbered_parts = re.split(r'\n\s*\d+\.\s*', single_response)
+            if len(numbered_parts) > 1:
+                # Remove empty first part if it exists
+                if not numbered_parts[0].strip():
+                    numbered_parts = numbered_parts[1:]
+                answers = [part.strip() for part in numbered_parts if part.strip()]
+
+        return answers
+
 
 async def process_dataset_item(
     item: Dict[str, Any],
@@ -418,6 +615,9 @@ async def process_dataset_item(
     # Create separate records for each question
     question_records = []
     if "error" not in result:
+        answers = result.get("answers", [])
+        answer_errors = result.get("answer_errors", [])
+
         for i, question in enumerate(result["questions"]):
             question_record = {
                 "input": question,  # The generated question becomes the input
@@ -428,6 +628,23 @@ async def process_dataset_item(
                 "generation_settings": result["generation_settings"],
                 "timestamp": result["timestamp"]
             }
+
+            # Add answer if available
+            if i < len(answers):
+                answer = answers[i]
+                if answer == "Error: Could not generate answer":
+                    question_record["output"] = "error"
+                    question_record["answer_error"] = "Unable to generate answer for this question"
+                else:
+                    question_record["output"] = answer
+            elif answers:  # If we have some answers but not for this question
+                question_record["output"] = "error"
+                question_record["answer_error"] = "Unable to generate answer for this question"
+
+            # Add answer errors if any
+            if answer_errors:
+                question_record["answer_errors"] = answer_errors
+
             question_records.append(question_record)
     else:
         # Create error record
@@ -483,7 +700,27 @@ async def main():
         "--styles-file",
         help="Path to a file containing styles (one per line)"
     )
-    
+    parser.add_argument(
+        "--with-answer",
+        action="store_true",
+        help="Generate answers for each question using the model"
+    )
+    parser.add_argument(
+        "--answer-provider",
+        choices=["featherless", "openai", "anthropic", "qwen", "qwen-deepinfra", "kimi",
+                "z.ai", "openrouter", "cerebras", "together", "groq", "gemini", "ollama", "chutes", "huggingface"],
+        help="API provider to use for answering questions (if not set, uses the same provider as --provider)"
+    )
+    parser.add_argument(
+        "--answer-model",
+        help="Model to use for answering questions (if not set, uses the same model as --model)"
+    )
+    parser.add_argument(
+        "--answer-single-request",
+        action="store_true",
+        help="Answer all questions in a single request instead of one question per request"
+    )
+
     args = parser.parse_args()
     
     # Set logging level
@@ -586,6 +823,23 @@ async def main():
     except Exception as e:
         logger.error(f"Failed to initialize provider: {e}")
         return
+
+    # Initialize answer provider if requested
+    answer_provider = None
+    if args.with_answer:
+        try:
+            answer_provider_name = args.answer_provider if args.answer_provider else args.provider
+            answer_model = args.answer_model if args.answer_model else args.model
+            answer_provider = APIProvider(answer_provider_name, answer_model, args.max_tokens)
+            if args.verbose:
+                print(f"🤖 Initialized answer provider: {answer_provider_name}/{answer_model}")
+                if args.answer_single_request:
+                    print("📝 Answer mode: Single request for all questions")
+                else:
+                    print("📝 Answer mode: One request per question")
+        except Exception as e:
+            logger.error(f"Failed to initialize answer provider: {e}")
+            return
     
     # Initialize question generator
     # Prepare styles list (if provided)
@@ -617,11 +871,13 @@ async def main():
         styles_list = [s.strip() for s in str(args.style).split(',') if s.strip()]
 
     question_generator = QuestionGenerator(
-    provider=provider,
-    num_questions=args.num_questions,
-    verbose=args.verbose,
+        provider=provider,
+        num_questions=args.num_questions,
+        verbose=args.verbose,
         sleep_between_requests=args.sleep_between_requests,
         styles=styles_list,
+        answer_provider=answer_provider,
+        answer_single_request=args.answer_single_request if args.with_answer else False,
     )
     
     # Create output filename
@@ -657,6 +913,11 @@ async def main():
         else:
             print(f"🤗 Source: HuggingFace dataset ({args.dataset})")
         print(f"🤖 Model: {args.provider}/{args.model}")
+        if args.with_answer:
+            answer_provider_display = args.answer_provider if args.answer_provider else args.provider
+            answer_model_display = args.answer_model if args.answer_model else args.model
+            print(f"💬 Answer model: {answer_provider_display}/{answer_model_display}")
+            print(f"📝 Answer mode: {'Single request' if args.answer_single_request else 'One per question'}")
         print(f"❓ Expected total questions: {dataset_size * args.num_questions}")
         print(f"💾 Output file: {output_file}")
         print("=" * 80)
@@ -678,9 +939,13 @@ async def main():
         ]
         
         successful_questions = 0
+        successful_answers = 0
         failed_items = 0
-        
-        progress_desc = "Generating questions" if not args.verbose else "Question generation (verbose)"
+
+        if args.with_answer:
+            progress_desc = "Generating Q&A" if not args.verbose else "Q&A generation (verbose)"
+        else:
+            progress_desc = "Generating questions" if not args.verbose else "Question generation (verbose)"
         
         with open(output_file, 'w', encoding='utf-8') as f:
             for task in tqdm(asyncio.as_completed(tasks), total=len(tasks), desc=progress_desc, disable=False):
@@ -691,13 +956,20 @@ async def main():
                         for record in question_records:
                             if "error" not in record:
                                 successful_questions += 1
+                                if "output" in record and record["output"] != "error":
+                                    successful_answers += 1
                                 if args.verbose:
-                                    print(f"✅ Question {successful_questions}: {record['input'][:100]}...")
+                                    question_preview = record['input'][:100]
+                                    if args.with_answer and "output" in record and record["output"] != "error":
+                                        answer_preview = record['output'][:50] if record['output'] else "No answer"
+                                        print(f"✅ Q&A {successful_questions}: {question_preview}... → {answer_preview}...")
+                                    else:
+                                        print(f"✅ Question {successful_questions}: {question_preview}...")
                             else:
                                 failed_items += 1
                                 if args.verbose:
                                     print(f"❌ Failed to generate questions: {record['error']}")
-                            
+
                             # Write each question as a separate JSON line
                             f.write(json.dumps(record, ensure_ascii=False) + '\n')
                             f.flush()
@@ -720,14 +992,24 @@ async def main():
     
     # Final summary
     print(f"\n{'='*60}")
-    print(f"🎉 Question Generation Complete!")
+    if args.with_answer:
+        print(f"🎉 Question & Answer Generation Complete!")
+    else:
+        print(f"🎉 Question Generation Complete!")
     print(f"{'='*60}")
     print(f"📊 Dataset items processed: {dataset_size}")
     print(f"✅ Questions generated: {successful_questions}")
+    if args.with_answer:
+        print(f"💬 Answers generated: {successful_answers}")
+        print(f"📈 Answer success rate: {(successful_answers/successful_questions*100):.1f}%" if successful_questions > 0 else "📈 Answer success rate: 0.0%")
     print(f"❌ Failed items: {failed_items}")
-    print(f"📈 Success rate: {(successful_questions/(dataset_size*args.num_questions)*100):.1f}%")
+    print(f"📈 Question success rate: {(successful_questions/(dataset_size*args.num_questions)*100):.1f}%")
     print(f"💾 Output saved to: {output_file}")
     print(f"🔧 Provider used: {args.provider}/{args.model}")
+    if args.with_answer:
+        answer_provider_display = args.answer_provider if args.answer_provider else args.provider
+        answer_model_display = args.answer_model if args.answer_model else args.model
+        print(f"💬 Answer provider used: {answer_provider_display}/{answer_model_display}")
 
 
 if __name__ == "__main__":
