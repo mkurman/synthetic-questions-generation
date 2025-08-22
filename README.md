@@ -59,6 +59,7 @@ Key options:
 - --text-column TEXT          Column containing text to prompt from (default: text)
 - --num-questions INT         Questions per text (default: 3)
 - --max-tokens INT            Max tokens per response (default: 4096)
+- --provider-url URL          Base URL for 'other' provider (required when using --provider other)
 - --num-workers INT           Concurrency (default: 1)
 - --shuffle                   Shuffle dataset items
 - --max-items INT             Limit number of items
@@ -79,7 +80,9 @@ Key options:
 
 Supported providers for `--provider`:
 
-featherless, openai, anthropic, qwen, qwen-deepinfra, kimi, z.ai, openrouter, cerebras, together, groq, gemini, ollama, chutes
+featherless, openai, anthropic, qwen, qwen-deepinfra, kimi, z.ai, openrouter, cerebras, together, groq, gemini, ollama, chutes, huggingface, other
+
+The `other` provider allows you to use any OpenAI-compatible API endpoint by specifying `--provider-url`.
 
 ### Styles
 
@@ -191,6 +194,19 @@ python3 src/main.py <dataset> \
   --num-questions 3 \
   --with-answer \
   --answer-single-request
+
+# Use custom provider for questions and standard provider for answers
+export OTHER_API_KEY=your_custom_api_key
+export ANTHROPIC_API_KEY=your_anthropic_key
+python3 src/main.py <dataset> \
+  --provider other \
+  --provider-url https://your-custom-api.com/v1 \
+  --model your-custom-model \
+  --answer-provider anthropic \
+  --answer-model claude-3-haiku-20240307 \
+  --output-dir ./data/qa_output \
+  --num-questions 3 \
+  --with-answer
 ```
 
 When `--with-answer` is used, the output format includes an `output` field containing the generated answer, or "error" if answer generation failed.
@@ -214,12 +230,40 @@ Provide API keys via environment variables. General rule: `<PROVIDER>_API_KEY` u
 - hugging face → `HUGGINGFACE_API_KEY`
 - gemini → `GEMINI_API_KEY` (note: Gemini uses a query param; still export as shown)
 - ollama → no API key required (assumes local Ollama at http://localhost:11434)
+- other → `OTHER_API_KEY` (for custom OpenAI-compatible endpoints)
 
 Example:
 
 ```bash
 export OPENROUTER_API_KEY=your_api_key_here
 ```
+
+### Using Custom Providers ("other")
+
+The `other` provider allows you to use any OpenAI-compatible API endpoint. This is useful for:
+
+- Custom or self-hosted models
+- New providers not yet directly supported
+- Local inference servers that implement OpenAI-compatible APIs
+
+Requirements:
+- Set `--provider other`
+- Provide `--provider-url` with the base URL of your API endpoint
+- Set `OTHER_API_KEY` environment variable with your API key
+
+Example:
+
+```bash
+export OTHER_API_KEY=your_custom_api_key
+python3 src/main.py dataset.jsonl \
+  --provider other \
+  --provider-url https://your-custom-api.com/v1 \
+  --model your-custom-model \
+  --output-dir ./output \
+  --num-questions 3
+```
+
+The system will use OpenAI-compatible request format with your custom endpoint.
 
 ## Datasets
 
