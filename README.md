@@ -387,7 +387,8 @@ When using `--with-options`, each record includes an `options` field with multip
 		"A": "To replace human intelligence completely",
 		"B": "To enable computers to learn and make decisions from data",
 		"C": "To create robots that look like humans",
-		"D": "To store large amounts of data efficiently"
+		"D": "To store large amounts of data efficiently",
+		"E": "To generate synthetic questions from text"
 	},
 	"source_text": "...original text...",
 	"question_index": 1,
@@ -415,7 +416,8 @@ When using both `--with-options` and `--with-answer`, the answer includes the co
 		"A": "To replace human intelligence completely",
 		"B": "To enable computers to learn and make decisions from data",
 		"C": "To create robots that look like humans",
-		"D": "To store large amounts of data efficiently"
+		"D": "To store large amounts of data efficiently",
+		"E": "To generate synthetic questions from text"
 	},
 	"output": "Answer: B | Explanation: This is the correct answer because it enables computers to learn from data and make intelligent decisions, which is the fundamental purpose of machine learning.",
 	"correct_answer": "B",
@@ -430,7 +432,7 @@ When using both `--with-options` and `--with-answer`, the answer includes the co
 ```
 
 The system automatically extracts:
-- **`correct_answer`**: The letter (A, B, C, or D) for programmatic use
+- **`correct_answer`**: The letter (A, B, C, D, or E) for programmatic use
 - **`explanation`**: The detailed explanation text
 - **`output`**: The full formatted answer (for backward compatibility)
 
