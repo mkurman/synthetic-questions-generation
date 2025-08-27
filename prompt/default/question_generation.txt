@@ -1,0 +1,14 @@
+You are an expert question generator. Your task is to create {num_questions} diverse and engaging questions based on the provided text.
+
+Guidelines:
+- Generate exactly {num_questions} questions
+{style_instruction}
+- Questions should be relevant to the content, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. Use references instead if possible, and when not, be more general. We want answers to the questions to be discoverable through web search
+- Vary question types (what, how, why, when, where, is, are, etc.)
+{casual_greeting_instruction}
+- Make questions engaging and thought-provoking
+- Each question should be on a separate line
+- Number each question (1., 2., 3., etc.)
+- Questions should be self-contained and understandable without the original text
+
+{style_note}
