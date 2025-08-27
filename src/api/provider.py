@@ -18,6 +18,7 @@ src_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(src_dir))
 
 from default.styles import load_default_styles
+from api.prompt_loader import PromptLoader
 
 QUESTION_STYLES: List[str] = load_default_styles()
 
@@ -31,6 +32,7 @@ class APIProvider:
         model_name: str,
         max_tokens: int = 8192,
         custom_url: Optional[str] = None,
+        custom_prompt_dir: Optional[str] = None,
     ):
         self.provider_name = provider_name
         self.model_name = model_name
@@ -40,6 +42,7 @@ class APIProvider:
         self.rate_limit_retries = 1
         self.base_url = self._get_base_url()
         self.headers = self._get_headers()
+        self.prompt_loader = PromptLoader(custom_prompt_dir)
 
     def _get_base_url(self) -> str:
         """Get the base URL for the provider"""
@@ -124,11 +127,12 @@ class APIProvider:
         num_questions: int,
         session: aiohttp.ClientSession,
         selected_style: Optional[str] = None,
+        with_options: bool = False,
     ) -> tuple[str, str]:
         """Generate questions based on the provided text and return response with selected style"""
         try:
             messages, selected_style = self._prepare_messages(
-                text, num_questions, selected_style
+                text, num_questions, selected_style, with_options
             )
 
             if self.provider_name.lower() == "gemini":
@@ -147,7 +151,11 @@ class APIProvider:
             raise
 
     def _prepare_messages(
-        self, text: str, num_questions: int, selected_style: Optional[str]
+        self,
+        text: str,
+        num_questions: int,
+        selected_style: Optional[str],
+        with_options: bool = False,
     ) -> tuple[List[Dict[str, str]], str]:
         """Prepare messages for question generation and return the selected style.
 
@@ -161,27 +169,13 @@ class APIProvider:
             # No style requested - keep it as empty string for neutral handling
             pass
 
-        system_prompt = f"""You are an expert question generator. Your task is to create {num_questions} diverse and engaging questions based on the provided text.
-
-Guidelines:
-- Generate exactly {num_questions} questions
-{f"- Use a {selected_style} style" if selected_style else "- Generate questions in a straightforward manner"}
-- Questions should be relevant to the content, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. Use references instead if possible, and when not, be more general. We want answers to the questions to be discoverable through web search
-- Vary question types (what, how, why, when, where, is, are, etc.)
-{f"- Try to use greetings where applicable - like human would do when the style is informal" if selected_style and "casual" in selected_style.lower() else ""}
-- Make questions engaging and thought-provoking
-- Each question should be on a separate line
-- Number each question (1., 2., 3., etc.)
-- Questions should be self-contained and understandable without the original text
-
-{f"Style: {selected_style}" if selected_style else ""}"""
-
-        user_prompt = f"""Based on the following text, generate {num_questions} questions{f" in a {selected_style} style" if selected_style else ""}:
-
-Text:
-{text}
-
-Please generate exactly {num_questions} numbered questions:"""
+        # Use prompt loader to get formatted prompts
+        system_prompt, user_prompt = self.prompt_loader.get_question_generation_prompts(
+            num_questions=num_questions,
+            selected_style=selected_style,
+            text=text,
+            with_options=with_options,
+        )
 
         return [
             {"role": "system", "content": system_prompt},
@@ -318,11 +312,15 @@ Please generate exactly {num_questions} numbered questions:"""
         )
 
     async def generate_answer(
-        self, question: str, source_text: str, session: aiohttp.ClientSession
+        self,
+        question: str,
+        source_text: str,
+        session: aiohttp.ClientSession,
+        options: Optional[Dict[str, str]] = None,
     ) -> str:
         """Generate an answer for a given question based on the source text"""
         try:
-            messages = self._prepare_answer_messages(question, source_text)
+            messages = self._prepare_answer_messages(question, source_text, options)
 
             if self.provider_name.lower() == "gemini":
                 response = await self._generate_gemini_response(messages, session)
@@ -340,11 +338,17 @@ Please generate exactly {num_questions} numbered questions:"""
             raise
 
     async def generate_answers_batch(
-        self, questions: List[str], source_text: str, session: aiohttp.ClientSession
+        self,
+        questions: List[str],
+        source_text: str,
+        session: aiohttp.ClientSession,
+        questions_with_options: Optional[List[Dict[str, Any]]] = None,
     ) -> str:
         """Generate answers for multiple questions in a single request"""
         try:
-            messages = self._prepare_batch_answer_messages(questions, source_text)
+            messages = self._prepare_batch_answer_messages(
+                questions, source_text, questions_with_options
+            )
 
             if self.provider_name.lower() == "gemini":
                 response = await self._generate_gemini_response(messages, session)
@@ -364,28 +368,12 @@ Please generate exactly {num_questions} numbered questions:"""
             raise
 
     def _prepare_answer_messages(
-        self, question: str, source_text: str
+        self, question: str, source_text: str, options: Optional[Dict[str, str]] = None
     ) -> List[Dict[str, str]]:
         """Prepare messages for answering a single question"""
-        system_prompt = """You are an expert assistant that provides accurate, comprehensive answers to questions based on provided text.
-
-Guidelines:
-- Answer the question directly and thoroughly based on the provided text
-- Use information from the text to support your answer
-- Answer should be relevant to the text, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. We want answers to the questions to be based on the context without explicitly mentioning it
-- If the text doesn't contain enough information to fully answer the question, acknowledge this limitation
-- Be clear, concise, and well-structured in your response
-- Do not make up information that isn't in the provided text
-- If the question cannot be answered from the text, explain why"""
-
-        user_prompt = f"""Based on the following text, please answer this question:
-
-Question: {question}
-
-Text:
-{source_text}
-
-Please provide a comprehensive answer based on the information in the text:"""
+        system_prompt, user_prompt = self.prompt_loader.get_answer_generation_prompts(
+            question=question, source_text=source_text, options=options
+        )
 
         return [
             {"role": "system", "content": system_prompt},
@@ -393,32 +381,19 @@ Please provide a comprehensive answer based on the information in the text:"""
         ]
 
     def _prepare_batch_answer_messages(
-        self, questions: List[str], source_text: str
+        self,
+        questions: List[str],
+        source_text: str,
+        questions_with_options: Optional[List[Dict[str, Any]]] = None,
     ) -> List[Dict[str, str]]:
         """Prepare messages for answering multiple questions in a single request"""
-        system_prompt = """You are an expert assistant that provides accurate, comprehensive answers to multiple questions based on provided text.
-
-Guidelines:
-- Answer each question directly and thoroughly based on the provided text
-- Use information from the text to support your answers
-- Answer should be relevant to the text, but don't directly include any phrases like "in this text", "in this article", "the text", "regarding to the text", etc. We want answers to the questions to be based on the context without explicitly mentioning it
-- If the text doesn't contain enough information to fully answer a question, acknowledge this limitation
-- Be clear, concise, and well-structured in your responses
-- Do not make up information that isn't in the provided text
-- Number each answer to correspond with the question number
-- Format each answer on a separate line starting with the number (1., 2., 3., etc.)"""
-
-        questions_text = "\n".join([f"{i+1}. {q}" for i, q in enumerate(questions)])
-
-        user_prompt = f"""Based on the following text, please answer these questions:
-
-Questions:
-{questions_text}
-
-Text:
-{source_text}
-
-Please provide comprehensive answers based on the information in the text, numbering each answer:"""
+        system_prompt, user_prompt = (
+            self.prompt_loader.get_batch_answer_generation_prompts(
+                questions=questions,
+                source_text=source_text,
+                questions_with_options=questions_with_options,
+            )
+        )
 
         return [
             {"role": "system", "content": system_prompt},

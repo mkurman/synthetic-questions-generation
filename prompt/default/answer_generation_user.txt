@@ -1,0 +1,8 @@
+Based on the following text, please answer this question:
+
+Question: {question}
+
+Text:
+{source_text}
+
+Please provide a comprehensive answer based on the information in the text:

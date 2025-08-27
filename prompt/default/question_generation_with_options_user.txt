@@ -1,0 +1,6 @@
+Based on the following text, generate {num_questions} multiple-choice questions{style_suffix}:
+
+Text:
+{text}
+
+Please generate exactly {num_questions} numbered multiple-choice questions with 4 options each (A, B, C, D, E):

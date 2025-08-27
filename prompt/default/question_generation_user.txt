@@ -1,0 +1,6 @@
+Based on the following text, generate {num_questions} questions{style_suffix}:
+
+Text:
+{text}
+
+Please generate exactly {num_questions} numbered questions:
