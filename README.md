@@ -30,6 +30,40 @@ python3 src/main.py mkurman/hindawi-journals-2007-2023 \
 
 See `example.sh` for a ready-to-run snippet.
 
+## New Features
+
+### YAML Configuration Support
+
+You can now use YAML configuration files for easier management:
+
+```bash
+# Using YAML configuration
+python3 src/main.py --config configs/example.yaml
+
+# Override specific settings
+python3 src/main.py --config configs/example.yaml --provider anthropic --model claude-3-sonnet
+```
+
+### Custom System Prompts
+
+Customize the system prompts used for question and answer generation:
+
+```bash
+# Using custom prompts
+python3 src/main.py --config configs/example.yaml --custom-prompts ./my_prompts
+```
+
+### Multiple-Choice Questions
+
+Generate multiple-choice questions with options A, B, C, D, E:
+
+```bash
+# Generate multiple-choice questions
+python3 src/main.py --config configs/example.yaml --with-options
+```
+
+See [CONFIGURATION.md](CONFIGURATION.md) for detailed documentation on these features.
+
 ## Requirements
 
 - Python 3.9+ (uses modern typing like `list[str]`)
@@ -40,6 +74,7 @@ Contents of `requirements.txt`:
 - aiohttp
 - datasets
 - tqdm
+- PyYAML
 
 ## Usage
 
@@ -342,6 +377,64 @@ When using `--with-answer`, each record also includes an `output` field with the
 	"timestamp": "2025-08-17T12:34:56.789012"
 }
 ```
+
+When using `--with-options`, each record includes an `options` field with multiple-choice options:
+
+```json
+{
+	"input": "What is the primary purpose of machine learning?",
+	"options": {
+		"A": "To replace human intelligence completely",
+		"B": "To enable computers to learn and make decisions from data",
+		"C": "To create robots that look like humans",
+		"D": "To store large amounts of data efficiently",
+		"E": "To generate synthetic questions from text"
+	},
+	"source_text": "...original text...",
+	"question_index": 1,
+	"total_questions": 3,
+	"metadata": { "original_item_index": 0, "text_column": "text" },
+	"generation_settings": {
+		"provider": "openrouter",
+		"model": "qwen/qwen3-235b-a22b-2507",
+		"style": "formal and academic",
+		"with_options": true,
+		"num_questions_requested": 3,
+		"num_questions_generated": 3,
+		"max_tokens": 4096
+	},
+	"timestamp": "2025-08-17T12:34:56.789012"
+}
+```
+
+When using both `--with-options` and `--with-answer`, the answer includes the correct letter and explanation in separate fields:
+
+```json
+{
+	"input": "What is the primary purpose of machine learning?",
+	"options": {
+		"A": "To replace human intelligence completely",
+		"B": "To enable computers to learn and make decisions from data",
+		"C": "To create robots that look like humans",
+		"D": "To store large amounts of data efficiently",
+		"E": "To generate synthetic questions from text"
+	},
+	"output": "Answer: B | Explanation: This is the correct answer because it enables computers to learn from data and make intelligent decisions, which is the fundamental purpose of machine learning.",
+	"correct_answer": "B",
+	"explanation": "This is the correct answer because it enables computers to learn from data and make intelligent decisions, which is the fundamental purpose of machine learning.",
+	"source_text": "...original text...",
+	"generation_settings": {
+		"with_options": true,
+		"with_answer": true,
+		...
+	}
+}
+```
+
+The system automatically extracts:
+- **`correct_answer`**: The letter (A, B, C, D, or E) for programmatic use
+- **`explanation`**: The detailed explanation text
+- **`output`**: The full formatted answer (for backward compatibility)
 
 If answer generation fails for a question, the `output` field is set to "error" and an `answer_error` field provides details.
 

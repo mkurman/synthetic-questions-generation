@@ -1,0 +1,11 @@
+Based on the following text, please answer these multiple-choice questions:
+
+{questions_with_options_text}
+
+Text:
+{source_text}
+
+Please provide your answers in the format:
+1. Answer: [Letter] | Explanation: [Your explanation]
+2. Answer: [Letter] | Explanation: [Your explanation]
+etc.
